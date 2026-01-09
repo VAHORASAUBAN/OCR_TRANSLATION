@@ -3,13 +3,15 @@ pdf2image
 pytesseract
 opencv-python
 numpy
-torch
-transformers
+transformers==4.36.2
 sentencepiece
 langdetect
 pymupdf
-docx==0.2.4
-lxml==6.0.2
-numpy==2.2.6
-opencv-python==4.12.0.88
-pillow==12.0.0
+docx
+lxml
+numpy
+opencv-python
+pillow
+torch==2.1.2
+torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.16.2
