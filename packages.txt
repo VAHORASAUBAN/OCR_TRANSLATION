@@ -1,0 +1,13 @@
+tesseract-ocr
+tesseract-ocr-eng
+tesseract-ocr-hin
+tesseract-ocr-guj
+tesseract-ocr-tam
+tesseract-ocr-tel
+tesseract-ocr-mal
+tesseract-ocr-kan
+tesseract-ocr-ben
+tesseract-ocr-pan
+tesseract-ocr-urd
+tesseract-ocr-nep
+poppler-utils

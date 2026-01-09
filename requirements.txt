@@ -1,0 +1,15 @@
+streamlit
+pdf2image
+pytesseract
+opencv-python
+numpy
+torch
+transformers
+sentencepiece
+langdetect
+pymupdf
+docx==0.2.4
+lxml==6.0.2
+numpy==2.2.6
+opencv-python==4.12.0.88
+pillow==12.0.0
