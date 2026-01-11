@@ -1,17 +1,15 @@
 streamlit
 pdf2image
 pytesseract
-opencv-python
+opencv-python-headless
 numpy
 transformers==4.36.2
 sentencepiece
 langdetect
 pymupdf
-docx
+python-docx
 lxml
-numpy
-opencv-python
 pillow
-torch==2.1.2
-torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
-torchvision==0.16.2
+torch==2.1.0+cpu
+torchvision==0.16.0+cpu
+torchaudio==2.1.0+cpu
