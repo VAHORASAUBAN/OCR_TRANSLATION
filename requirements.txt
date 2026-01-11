@@ -3,13 +3,13 @@ pdf2image
 pytesseract
 opencv-python-headless
 numpy
-transformers==4.36.2
+transformers>=4.36.2
 sentencepiece
 langdetect
 pymupdf
 python-docx
 lxml
 pillow
-torch==2.1.0+cpu
-torchvision==0.16.0+cpu
-torchaudio==2.1.0+cpu
+torch>=2.5.0
+torchvision>=0.20.0
+torchaudio>=2.5.0
