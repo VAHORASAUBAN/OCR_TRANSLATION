@@ -166,6 +166,8 @@ from PIL import Image
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from tempfile import NamedTemporaryFile
 
+pytesseract.pytesseract.tesseract_cmd = r"C:/Program Files/Tesseract-OCR/tesseract.exe"
+
 st.set_page_config(page_title="Multilingual OCR + Translation", layout="wide")
 
 # ---------------- CONFIG ----------------
@@ -175,7 +177,7 @@ LANG_SCRIPT_MAP = {
     "Bengali":"ben_Beng","Gurmukhi":"pan_Guru","Arabic":"urd_Arab","Latin":"eng_Latn"
 }
 
-MODEL="facebook/nllb-200-3.3B"
+MODEL="facebook/nllb-200-1.3B"
 DEVICE="cuda" if torch.cuda.is_available() else "cpu"
 MAX_TOKENS = 1024
 
