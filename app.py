@@ -160,63 +160,59 @@
 
 
 import streamlit as st
-import cv2, pytesseract, unicodedata, torch, fitz
+import cv2, json, pytesseract, unicodedata, torch, fitz
 import numpy as np
 from PIL import Image
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from tempfile import NamedTemporaryFile
 
-# ---------------- STREAMLIT CONFIG ----------------
+# pytesseract.pytesseract.tesseract_cmd = r"C:/Program Files/Tesseract-OCR/tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = r"C:/Users/sauban.vahora/AppData/Local/Programs/Tesseract-OCR/tesseract.exe"
+
 st.set_page_config(page_title="Multilingual OCR + Translation", layout="wide")
 
-# ---------------- OCR CONFIG ----------------
-pytesseract.pytesseract.tesseract_cmd = "tesseract"   # Linux safe
-
-# ---------------- CONSTANTS ----------------
+# ---------------- CONFIG ----------------
 LANG_SCRIPT_MAP = {
     "Devanagari":"hin_Deva","Tamil":"tam_Taml","Telugu":"tel_Telu",
     "Malayalam":"mal_Mlym","Kannada":"kan_Knda","Gujarati":"guj_Gujr",
     "Bengali":"ben_Beng","Gurmukhi":"pan_Guru","Arabic":"urd_Arab","Latin":"eng_Latn"
 }
 
-MODEL = "facebook/nllb-200-1.3B"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MAX_TOKENS = 512
+MODEL="facebook/nllb-200-1.3B"
+DEVICE="cuda" if torch.cuda.is_available() else "cpu"
+MAX_TOKENS = 1024
 
-# ---------------- SAFE MODEL LOADING ----------------
 @st.cache_resource
 def load_model():
     tokenizer = AutoTokenizer.from_pretrained(MODEL)
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        MODEL,
-        torch_dtype=torch.float16 if DEVICE=="cuda" else torch.float32,
-        low_cpu_mem_usage=True
-    ).to(DEVICE)
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL).to(DEVICE)
     model.eval()
     return tokenizer, model
 
-# ---------------- PDF RENDER ----------------
-def pdf_to_images(pdf_path, dpi=300):
+tokenizer, model = load_model()
+cache = {}
+
+# ---------------- PDF RENDERER (PyMuPDF) ----------------
+def pdf_to_images(pdf_path, dpi=600):
     zoom = dpi / 72
     mat = fitz.Matrix(zoom, zoom)
     doc = fitz.open(pdf_path)
-    pages = []
+    images = []
+
     for page in doc:
         pix = page.get_pixmap(matrix=mat, alpha=False)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        pages.append(img)
-    return pages
+        images.append(img)
 
-# ---------------- OCR ----------------
+    return images
+
+# ---------------- OCR HELPERS ----------------
 def preprocess(img):
     img = np.array(img)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     gray = cv2.bilateralFilter(gray,11,75,75)
     clahe = cv2.createCLAHE(2.0,(8,8))
     return clahe.apply(gray)
-
-def split_lines(text):
-    return [x.strip() for x in text.split("\n") if x.strip()]
 
 def get_script(c):
     o = ord(c)
@@ -232,18 +228,41 @@ def get_script(c):
     if 0x0041 <= o <= 0x007A: return "Latin"
     return None
 
-# ---------------- TRANSLATION ----------------
-@st.cache_data
-def translate(text, src):
-    tokenizer, model = load_model()
-    tokenizer.src_lang = src
-    forced = tokenizer.convert_tokens_to_ids("eng_Latn")
-    inputs = tokenizer(text, return_tensors="pt", truncation=True).to(DEVICE)
-    with torch.no_grad():
-        out = model.generate(**inputs, forced_bos_token_id=forced, max_new_tokens=200)
-    return tokenizer.decode(out[0], skip_special_tokens=True)
+def split_lines(text):
+    return [x.strip() for x in text.split("\n") if x.strip()]
 
-# ---------------- UI ----------------
+# ---------------- TRANSLATION ----------------
+def tokenize_chunks(text):
+    ids = tokenizer(text).input_ids
+    chunks, cur = [], []
+    for i in ids:
+        cur.append(i)
+        if len(cur) >= MAX_TOKENS:
+            chunks.append(cur)
+            cur = []
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+def translate(txt, lang):
+    key = (txt, lang)
+    if key in cache:
+        return cache[key]
+
+    tokenizer.src_lang = lang
+    forced = tokenizer.convert_tokens_to_ids("eng_Latn")
+
+    final = ""
+    for c in tokenize_chunks(txt):
+        inp = torch.tensor([c]).to(DEVICE)
+        with torch.no_grad():
+            out = model.generate(inp, forced_bos_token_id=forced)
+        final += tokenizer.decode(out[0], skip_special_tokens=True) + " "
+
+    cache[key] = final.strip()
+    return cache[key]
+
+# ---------------- STREAMLIT UI ----------------
 st.title("📄 Multilingual OCR + Translation Engine")
 st.markdown("Upload a scanned PDF and get **script-aware OCR + English translation**")
 
@@ -252,12 +271,12 @@ uploaded = st.file_uploader("Upload PDF", type=["pdf"])
 if uploaded:
     with NamedTemporaryFile(delete=False, suffix=".pdf") as f:
         f.write(uploaded.read())
-        path = f.name
+        pdf_path = f.name
 
-    st.info("OCR running… hang tight 💪")
+    st.info("Running OCR… this is heavy stuff, give it a sec 💪")
 
-    pages = pdf_to_images(path)
-    lines = []
+    pages = pdf_to_images(pdf_path, dpi=600)
+    raw_lines = []
 
     for i, p in enumerate(pages):
         img = preprocess(p)
@@ -267,10 +286,27 @@ if uploaded:
             config="--psm 6 --oem 3"
         )
         text = unicodedata.normalize("NFKC", text)
-        for l in split_lines(text):
-            lines.append((i+1, l))
+        for line in split_lines(text):
+            raw_lines.append((i+1, line))
 
-    for page, line in lines:
+    char_count = {}
+    total = 0
+    for _, line in raw_lines:
+        for c in line:
+            s = get_script(c)
+            if s:
+                char_count[s] = char_count.get(s,0)+1
+                total += 1
+
+    script_ratio = {s:char_count[s]/total for s in char_count}
+    valid_scripts = {s for s,r in script_ratio.items() if r >= 0.10}
+
+    st.subheader("🧠 Detected Scripts")
+    for s in valid_scripts:
+        st.write(f"**{s}** → {script_ratio[s]*100:.2f}%")
+
+    results = []
+    for page, line in raw_lines:
         counts = {}
         for c in line:
             s = get_script(c)
@@ -279,12 +315,20 @@ if uploaded:
         if not counts:
             continue
 
-        script = max(counts, key=counts.get)
-        src = LANG_SCRIPT_MAP.get(script, "eng_Latn")
+        dominant = max(counts, key=counts.get)
+        if dominant not in valid_scripts:
+            continue
 
-        eng = line if src=="eng_Latn" else translate(line, src)
+        src = LANG_SCRIPT_MAP.get(dominant,"eng_Latn")
+        if src == "eng_Latn":
+            eng = line
+        else:
+            eng = translate(line, src)
 
+        results.append((page, dominant, line, eng))
+
+    st.subheader("📜 Page-wise OCR + Translation")
+    for page, script, ocr, eng in results:
         st.markdown(f"### Page {page} — {script}")
-        st.code(line)
+        st.code(ocr)
         st.success(eng)
-
